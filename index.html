@@ -313,29 +313,40 @@
             <!-- The Form -->
             <form id="paymentForm" class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 space-y-4">
                 
-                <!-- MAKLUMAT BANK & QR CODE -->
+                <!-- MAKLUMAT BANK & QR CODE — diisi terus dari GET_APP_SETTINGS
+                     (BANK_NAMA/BANK_PEMEGANG_AKAUN/BANK_NO_AKAUN/QR_FILE_ID),
+                     bukan hardcode — setiap client PASTI ada akaun bank sendiri.
+                     Rujuk fetchAppSettings() untuk logik populate. -->
                 <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 text-center">
                     <h4 class="text-xs font-bold text-blue-800 mb-3 uppercase tracking-wider">Maklumat Akaun Pembayaran</h4>
-                    
-                    <!-- QR Code -->
-                    <div class="flex justify-center mb-3">
-                        <div class="p-2 bg-white rounded-xl shadow-sm border border-blue-100">
-                            <img src="https://lh3.googleusercontent.com/d/1in-GvBbLAGvOjXwJoGVQx2mbTfNBaKnn=s400" alt="QR Code Bank Islam" class="w-40 h-40 object-contain rounded-lg">
-                        </div>
+
+                    <!-- Keadaan: maklumat bank belum disediakan SuperAdmin lagi -->
+                    <div id="bankInfoEmpty" class="hidden text-sm text-blue-900 py-2">
+                        <p class="font-semibold">Maklumat pembayaran belum disediakan.</p>
+                        <p class="text-xs text-blue-700 mt-1">Sila hubungi pihak pentadbir PASTI untuk maklumat akaun bank.</p>
                     </div>
-                    
-                    <!-- Bank Details -->
-                    <div class="space-y-1 text-sm text-blue-900">
-                        <p class="font-black text-lg">BANK ISLAM</p>
-                        <p class="font-semibold text-xs sm:text-sm">DEWAN PEMUDA PAS LEMBAH PANTAI</p>
-                        
-                        <div class="flex items-center justify-center space-x-2 mt-3">
-                            <span class="font-mono text-base sm:text-lg font-bold bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-inner tracking-wider">120470 100 49754</span>
-                            <button type="button" onclick="copyAccountNo()" class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center" title="Salin Nombor Akaun">
-                                <i data-lucide="copy" class="w-5 h-5"></i>
-                            </button>
+
+                    <div id="bankInfoContent" class="hidden">
+                        <!-- QR Code -->
+                        <div id="qrCodeWrap" class="hidden flex justify-center mb-3">
+                            <div class="p-2 bg-white rounded-xl shadow-sm border border-blue-100">
+                                <img id="qrCodeImg" src="" alt="QR Kod Bank" class="w-40 h-40 object-contain rounded-lg">
+                            </div>
                         </div>
-                        <p id="copyFeedback" class="text-xs text-emerald-600 font-bold mt-2 opacity-0 transition-opacity duration-300">Nombor akaun berjaya disalin!</p>
+
+                        <!-- Bank Details -->
+                        <div class="space-y-1 text-sm text-blue-900">
+                            <p id="bankNamaText" class="font-black text-lg"></p>
+                            <p id="bankPemegangText" class="font-semibold text-xs sm:text-sm"></p>
+
+                            <div class="flex items-center justify-center space-x-2 mt-3">
+                                <span id="bankNoAkaunText" class="font-mono text-base sm:text-lg font-bold bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-inner tracking-wider"></span>
+                                <button type="button" onclick="copyAccountNo()" class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center" title="Salin Nombor Akaun">
+                                    <i data-lucide="copy" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <p id="copyFeedback" class="text-xs text-emerald-600 font-bold mt-2 opacity-0 transition-opacity duration-300">Nombor akaun berjaya disalin!</p>
+                        </div>
                     </div>
                 </div>
 
@@ -652,10 +663,51 @@
                     const footerEl = document.getElementById('footerText');
                     if (footerEl) footerEl.innerText = result.settings.FOOTER_TEKS;
                 }
+                if (result.result === 'success' && result.settings) {
+                    applyBankInfo_(result.settings);
+                }
             } catch (err) {
                 console.error('Gagal muat tetapan umum:', err);
             } finally {
                 applyPendaftaranLabel();
+            }
+        }
+
+        // Papar maklumat bank/QR pada Borang Bayaran ikut Tetapan Sistem
+        // client ni (BANK_NAMA/BANK_PEMEGANG_AKAUN/BANK_NO_AKAUN/QR_FILE_ID).
+        // Kalau BANK_NO_AKAUN belum diisi SuperAdmin, papar mesej "belum
+        // disediakan" — elak parent nampak field kosong yang nampak rosak,
+        // atau lagi teruk, maklumat bank client LAIN (bug lama yang dah
+        // dibetulkan — setiap client kini WAJIB isi akaun sendiri).
+        function applyBankInfo_(settings) {
+            const noAkaun = (settings.BANK_NO_AKAUN || '').toString().trim();
+            const emptyEl = document.getElementById('bankInfoEmpty');
+            const contentEl = document.getElementById('bankInfoContent');
+            if (!noAkaun) {
+                if (emptyEl) emptyEl.classList.remove('hidden');
+                if (contentEl) contentEl.classList.add('hidden');
+                window.currentBankNoAkaun = '';
+                return;
+            }
+            if (emptyEl) emptyEl.classList.add('hidden');
+            if (contentEl) contentEl.classList.remove('hidden');
+
+            window.currentBankNoAkaun = noAkaun;
+            const namaBankEl = document.getElementById('bankNamaText');
+            if (namaBankEl) namaBankEl.textContent = settings.BANK_NAMA || '';
+            const pemegangEl = document.getElementById('bankPemegangText');
+            if (pemegangEl) pemegangEl.textContent = settings.BANK_PEMEGANG_AKAUN || '';
+            const noAkaunEl = document.getElementById('bankNoAkaunText');
+            if (noAkaunEl) noAkaunEl.textContent = noAkaun;
+
+            const qrId = (settings.QR_FILE_ID || '').toString().trim();
+            const qrWrap = document.getElementById('qrCodeWrap');
+            const qrImg = document.getElementById('qrCodeImg');
+            if (qrId && qrId !== 'NONE') {
+                if (qrImg) qrImg.src = `https://lh3.googleusercontent.com/d/${qrId}=s400`;
+                if (qrWrap) qrWrap.classList.remove('hidden');
+            } else {
+                if (qrWrap) qrWrap.classList.add('hidden');
             }
         }
 
@@ -1495,8 +1547,11 @@
         });
 
         // --- FUNGSI COPY AKAUN BANK ---
+        // window.currentBankNoAkaun diset dalam fetchAppSettings() dari
+        // BANK_NO_AKAUN (Config) — bukan hardcode, setiap client beza akaun.
         function copyAccountNo() {
-            const accNo = "12047010049754"; // Nombor akaun disalin tanpa jarak untuk mudahkan paste di app bank
+            const accNo = (window.currentBankNoAkaun || '').replace(/\s+/g, ''); // buang jarak untuk mudahkan paste di app bank
+            if (!accNo) return;
             const tempInput = document.createElement("input");
             tempInput.value = accNo;
             document.body.appendChild(tempInput);
