@@ -313,6 +313,10 @@
             const [configFormValues, setConfigFormValues] = useState({});
             const [savingConfigKey, setSavingConfigKey] = useState('');
             const [configSaveMessage, setConfigSaveMessage] = useState('');
+            // Key yang assetnya (Logo/QR) sedang dimuat naik — LOGO_FILE_ID/
+            // QR_FILE_ID di-special-case dalam borang Tetapan Sistem sebagai
+            // upload button + preview (bukan input teks ID), rujuk uploadAsset().
+            const [uploadingAsset, setUploadingAsset] = useState('');
 
             // --- Yuran Lain-Lain (ad-hoc, cth Yuran Baju/Event) ---
             const [adhocFees, setAdhocFees] = useState([]);
@@ -643,6 +647,67 @@
                         setConfigSaveMessage('Tetapan dikemaskini.');
                     } else {
                         setConfigSaveMessage(result.message || 'Gagal kemaskini tetapan.');
+                    }
+                } catch (err) {
+                    setConfigSaveMessage('Ralat menyambung ke server.');
+                } finally {
+                    setSavingConfigKey('');
+                }
+            };
+
+            // Muat naik Logo/QR terus (gantikan copy-paste ID Drive manual) —
+            // guna fileToBase64Payload sedia ada (rujuk saveStudent), hantar ke
+            // action UPLOAD_ASSET backend (auto-tulis Config row & auto-buang
+            // fail lama). def.key LOGO_FILE_ID/QR_FILE_ID sepadan assetType
+            // 'logo'/'qr' — rujuk render Tetapan Umum di bawah untuk pemetaan.
+            const uploadAsset = async (key, assetType, file) => {
+                setConfigSaveMessage('');
+                setUploadingAsset(key);
+                try {
+                    const payload = await fileToBase64Payload(file);
+                    const response = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'UPLOAD_ASSET',
+                            token: currentUser.token,
+                            assetType: assetType,
+                            image: payload.base64,
+                            mimeType: payload.mimeType,
+                            filename: file.name
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.result === 'success') {
+                        setConfigFormValues(prev => ({ ...prev, [key]: result.fileId }));
+                        setAppSettings(prev => ({ ...prev, [key]: result.fileId }));
+                        setConfigSaveMessage('Imej berjaya dimuat naik.');
+                    } else {
+                        setConfigSaveMessage(result.message || 'Gagal muat naik imej.');
+                    }
+                } catch (err) {
+                    setConfigSaveMessage('Ralat menyambung ke server.');
+                } finally {
+                    setUploadingAsset('');
+                }
+            };
+
+            // Buang Logo/QR sedia ada — tukar terus ke sentinel 'NONE' (backend
+            // handleSetAppSetting_ akan cuba buang fail Drive lama sekali).
+            const removeAsset = async (key) => {
+                setConfigSaveMessage('');
+                setSavingConfigKey(key);
+                try {
+                    const response = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'SET_APP_SETTING', token: currentUser.token, key: key, value: 'NONE' })
+                    });
+                    const result = await response.json();
+                    if (result.result === 'success') {
+                        setConfigFormValues(prev => ({ ...prev, [key]: 'NONE' }));
+                        setAppSettings(prev => ({ ...prev, [key]: 'NONE' }));
+                        setConfigSaveMessage('Imej dibuang.');
+                    } else {
+                        setConfigSaveMessage(result.message || 'Gagal membuang imej.');
                     }
                 } catch (err) {
                     setConfigSaveMessage('Ralat menyambung ke server.');
@@ -3451,26 +3516,79 @@
                                         {appSettingsDefs.length === 0 && (
                                             <p className="text-sm text-slate-400">Memuatkan senarai tetapan...</p>
                                         )}
-                                        {appSettingsDefs.map(def => (
-                                            <div key={def.key} className="flex flex-col sm:flex-row gap-3 sm:items-end border-b border-slate-50 pb-4 last:border-0 last:pb-0">
-                                                <div className="flex-1">
-                                                    <label className="block text-xs font-bold text-slate-600 mb-1">{def.label}</label>
-                                                    <input
-                                                        type="text"
-                                                        value={configFormValues[def.key] ?? ''}
-                                                        onChange={e => setConfigFormValues(prev => ({ ...prev, [def.key]: e.target.value }))}
-                                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-sky-200"
-                                                    />
+                                        {appSettingsDefs.map(def => {
+                                            // LOGO_FILE_ID/QR_FILE_ID: special-case sebagai upload button + preview
+                                            // (bukan input teks ID Drive) — admin tak payah upload manual ke Drive
+                                            // sendiri & copy-paste ID lagi. Rujuk uploadAsset()/removeAsset() di atas.
+                                            if (def.key === 'LOGO_FILE_ID' || def.key === 'QR_FILE_ID') {
+                                                const currentId = (configFormValues[def.key] || '').toString().trim();
+                                                const hasAsset = currentId && currentId !== 'NONE';
+                                                const previewUrl = hasAsset ? `https://lh3.googleusercontent.com/d/${currentId}=s200` : '';
+                                                const assetType = def.key === 'LOGO_FILE_ID' ? 'logo' : 'qr';
+                                                const assetLabel = def.key === 'LOGO_FILE_ID' ? 'Logo Rasmi' : 'QR Kod Bank';
+                                                return (
+                                                    <div key={def.key} className="flex flex-col sm:flex-row gap-4 sm:items-center border-b border-slate-50 pb-4 last:border-0 last:pb-0">
+                                                        <div className="flex-1">
+                                                            <label className="block text-xs font-bold text-slate-600 mb-2">{assetLabel}</label>
+                                                            <div className="flex items-center gap-3">
+                                                                {hasAsset ? (
+                                                                    <img src={previewUrl} alt={assetLabel} className="w-16 h-16 object-contain rounded-lg border border-slate-200 bg-white" />
+                                                                ) : (
+                                                                    <div className="w-16 h-16 rounded-lg border border-dashed border-slate-300 flex items-center justify-center text-slate-300">
+                                                                        <Icon name="image" size={20} />
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex flex-col gap-2">
+                                                                    <label className="cursor-pointer px-4 py-2 rounded-xl font-semibold text-sm bg-sky-50 text-sky-600 hover:bg-sky-100 transition text-center">
+                                                                        {uploadingAsset === def.key ? 'Memuat naik...' : (hasAsset ? 'Tukar Imej' : 'Muat Naik Imej')}
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            className="hidden"
+                                                                            disabled={uploadingAsset === def.key}
+                                                                            onChange={e => {
+                                                                                const f = e.target.files[0];
+                                                                                if (f) uploadAsset(def.key, assetType, f);
+                                                                                e.target.value = '';
+                                                                            }}
+                                                                        />
+                                                                    </label>
+                                                                    {hasAsset && (
+                                                                        <button
+                                                                            onClick={() => removeAsset(def.key)}
+                                                                            disabled={savingConfigKey === def.key}
+                                                                            className="text-xs text-red-500 hover:underline text-left disabled:opacity-50"
+                                                                        >
+                                                                            Buang imej
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <div key={def.key} className="flex flex-col sm:flex-row gap-3 sm:items-end border-b border-slate-50 pb-4 last:border-0 last:pb-0">
+                                                    <div className="flex-1">
+                                                        <label className="block text-xs font-bold text-slate-600 mb-1">{def.label}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={configFormValues[def.key] ?? ''}
+                                                            onChange={e => setConfigFormValues(prev => ({ ...prev, [def.key]: e.target.value }))}
+                                                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-sky-200"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={() => saveConfigKey(def.key)}
+                                                        disabled={savingConfigKey === def.key || !(configFormValues[def.key] || '').toString().trim()}
+                                                        className="px-5 py-2.5 rounded-xl font-semibold text-sm bg-sky-600 hover:bg-sky-700 text-white transition disabled:opacity-50 whitespace-nowrap"
+                                                    >
+                                                        {savingConfigKey === def.key ? 'Menyimpan...' : 'Simpan'}
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => saveConfigKey(def.key)}
-                                                    disabled={savingConfigKey === def.key || !(configFormValues[def.key] || '').toString().trim()}
-                                                    className="px-5 py-2.5 rounded-xl font-semibold text-sm bg-sky-600 hover:bg-sky-700 text-white transition disabled:opacity-50 whitespace-nowrap"
-                                                >
-                                                    {savingConfigKey === def.key ? 'Menyimpan...' : 'Simpan'}
-                                                </button>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                     {configSaveMessage && (
                                         <p className="text-sm text-slate-600 mt-4 bg-slate-50 rounded-lg p-3">{configSaveMessage}</p>
