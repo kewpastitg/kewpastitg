@@ -221,6 +221,20 @@
             const [loginError, setLoginError] = useState('');
             const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+            // --- Toast (notifikasi popup "Berjaya"/ralat) ---
+            // Satu senarai supaya boleh papar >1 toast serentak (cth: upload
+            // pantas berturut-turut) — setiap toast auto-hilang lepas 3.5 saat.
+            // showToast() dipanggil di HUJUNG setiap action simpan/upload/muat
+            // (rujuk saveStudent, uploadAsset, togglePermission, dll di bawah).
+            const [toasts, setToasts] = useState([]);
+            const showToast = (message, type = 'success') => {
+                const id = Date.now() + Math.random();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setToasts(prev => prev.filter(t => t.id !== id));
+                }, 3500);
+            };
+
             const [view, setView] = useState('dashboard');
             const [students, setStudents] = useState([]);
             const [transactions, setTransactions] = useState([]);
@@ -505,13 +519,17 @@
                         })
                     });
                     const result = await response.json();
-                    if (result.result !== 'success') {
+                    if (result.result === 'success') {
+                        showToast('Kebenaran dikemaskini.');
+                    } else {
                         // rollback kalau gagal
                         setSettingsPermissions(prev => prev.map(p => p.action === action ? { ...p, adminAllowed: !newValue } : p));
+                        showToast(result.message || 'Gagal simpan kebenaran.', 'error');
                     }
                 } catch (err) {
                     console.error('Gagal simpan kebenaran:', err);
                     setSettingsPermissions(prev => prev.map(p => p.action === action ? { ...p, adminAllowed: !newValue } : p));
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingPermissionAction(null);
                 }
@@ -548,11 +566,14 @@
                     if (result.result === 'success') {
                         setAutoBillActive(!autoBillActive);
                         setAutoBillMessage(result.message || '');
+                        showToast(autoBillActive ? 'Auto-Bil dinyahaktifkan.' : 'Auto-Bil diaktifkan.');
                     } else {
                         setAutoBillMessage(result.message || 'Gagal kemaskini auto-bil.');
+                        showToast(result.message || 'Gagal kemaskini auto-bil.', 'error');
                     }
                 } catch (err) {
                     setAutoBillMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setTogglingAutoBill(false);
                 }
@@ -569,12 +590,15 @@
                     const result = await response.json();
                     if (result.result === 'success') {
                         setAutoBillMessage(`Berjaya! ${result.generated} bil "${result.bulan}" dijana.`);
+                        showToast(`Berjaya! ${result.generated} bil "${result.bulan}" dijana.`);
                         fetchData();
                     } else {
                         setAutoBillMessage(result.message || 'Gagal jana bil.');
+                        showToast(result.message || 'Gagal jana bil.', 'error');
                     }
                 } catch (err) {
                     setAutoBillMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setRunningAutoBillNow(false);
                 }
@@ -645,11 +669,14 @@
                     if (result.result === 'success') {
                         setAppSettings(prev => ({ ...prev, [key]: value }));
                         setConfigSaveMessage('Tetapan dikemaskini.');
+                        showToast('Tetapan dikemaskini.');
                     } else {
                         setConfigSaveMessage(result.message || 'Gagal kemaskini tetapan.');
+                        showToast(result.message || 'Gagal kemaskini tetapan.', 'error');
                     }
                 } catch (err) {
                     setConfigSaveMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingConfigKey('');
                 }
@@ -681,11 +708,14 @@
                         setConfigFormValues(prev => ({ ...prev, [key]: result.fileId }));
                         setAppSettings(prev => ({ ...prev, [key]: result.fileId }));
                         setConfigSaveMessage('Imej berjaya dimuat naik.');
+                        showToast('Imej berjaya dimuat naik.');
                     } else {
                         setConfigSaveMessage(result.message || 'Gagal muat naik imej.');
+                        showToast(result.message || 'Gagal muat naik imej.', 'error');
                     }
                 } catch (err) {
                     setConfigSaveMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setUploadingAsset('');
                 }
@@ -706,11 +736,14 @@
                         setConfigFormValues(prev => ({ ...prev, [key]: 'NONE' }));
                         setAppSettings(prev => ({ ...prev, [key]: 'NONE' }));
                         setConfigSaveMessage('Imej dibuang.');
+                        showToast('Imej dibuang.');
                     } else {
                         setConfigSaveMessage(result.message || 'Gagal membuang imej.');
+                        showToast(result.message || 'Gagal membuang imej.', 'error');
                     }
                 } catch (err) {
                     setConfigSaveMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingConfigKey('');
                 }
@@ -769,14 +802,17 @@
                     const result = await response.json();
                     if (result.result === 'success') {
                         setAdhocFormMessage(result.message || 'Berjaya dikenakan.');
+                        showToast(result.message || 'Yuran berjaya dikenakan.');
                         setAdhocForm({ jenis: '', jumlah: '' });
                         setAdhocSelectedICs([]);
                         fetchAdhocFees();
                     } else {
                         setAdhocFormMessage(result.message || 'Gagal kenakan yuran.');
+                        showToast(result.message || 'Gagal kenakan yuran.', 'error');
                     }
                 } catch (err) {
                     setAdhocFormMessage('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setCreatingAdhocFee(false);
                 }
@@ -811,8 +847,9 @@
                     if (result.receiptUrl) {
                         setAdhocFees(prev => prev.map(f => (f.Timestamp === fee.Timestamp && f.IC === fee.IC) ? { ...f, Resit: result.receiptUrl } : f));
                     }
+                    showToast(newStatus === 'VERIFIED' ? 'Bayaran disahkan.' : 'Status dikemaskini.');
                 } catch (err) {
-                    alert('Gagal mengemaskini status: ' + err.message);
+                    showToast('Gagal mengemaskini status: ' + err.message, 'error');
                     setAdhocFees(prevFees);
                 } finally {
                     setUpdatingAdhocStatus(null);
@@ -1021,13 +1058,16 @@
                     const result = await response.json();
                     if (result.result === 'success') {
                         setAdminFormSuccess(result.message || 'Berjaya disimpan.');
+                        showToast('Admin berjaya disimpan.');
                         setAdminForm({ email: '', password: '', role: 'admin', cawangan: '' });
                         fetchAdmins();
                     } else {
                         setAdminFormError(result.message || 'Gagal menyimpan admin.');
+                        showToast(result.message || 'Gagal menyimpan admin.', 'error');
                     }
                 } catch (err) {
                     setAdminFormError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingAdmin(false);
                 }
@@ -1051,12 +1091,15 @@
                     const result = await response.json();
                     if (result.result === 'success') {
                         setAdminFormSuccess(result.message || 'Admin berjaya dipadam.');
+                        showToast('Admin berjaya dipadam.');
                         fetchAdmins();
                     } else {
                         setAdminFormError(result.message || 'Gagal memadam admin.');
+                        showToast(result.message || 'Gagal memadam admin.', 'error');
                     }
                 } catch (err) {
                     setAdminFormError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setDeletingAdminEmail(null);
                 }
@@ -1156,14 +1199,18 @@
                     });
                     const result = await response.json();
                     if (result.result === 'success') {
-                        setGuruFormSuccess(result.message || (isEditing ? 'Guru berjaya dikemaskini.' : 'Guru baharu berjaya ditambah.'));
+                        const msg = result.message || (isEditing ? 'Guru berjaya dikemaskini.' : 'Guru baharu berjaya ditambah.');
+                        setGuruFormSuccess(msg);
+                        showToast(msg);
                         resetGuruForm();
                         fetchGuru();
                     } else {
                         setGuruFormError(result.message || 'Gagal menyimpan guru.');
+                        showToast(result.message || 'Gagal menyimpan guru.', 'error');
                     }
                 } catch (err) {
                     setGuruFormError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingGuru(false);
                 }
@@ -1182,12 +1229,15 @@
                     const result = await response.json();
                     if (result.result === 'success') {
                         setGuruFormSuccess(result.message || 'Guru berjaya dipadam.');
+                        showToast('Guru berjaya dipadam.');
                         fetchGuru();
                     } else {
                         setGuruFormError(result.message || 'Gagal memadam guru.');
+                        showToast(result.message || 'Gagal memadam guru.', 'error');
                     }
                 } catch (err) {
                     setGuruFormError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setDeletingGuruId(null);
                 }
@@ -1416,16 +1466,20 @@
                     });
                     const result = await response.json();
                     if (result.result === 'success') {
-                        setStudentFormSuccess(result.message || (isEditing ? 'Pelajar berjaya dikemaskini.' : 'Pelajar baharu berjaya ditambah.'));
+                        const msg = result.message || (isEditing ? 'Pelajar berjaya dikemaskini.' : 'Pelajar baharu berjaya ditambah.');
+                        setStudentFormSuccess(msg);
+                        showToast(msg);
                         resetStudentForm();
                         fetchData();
                     } else {
                         const msg = (result.message || '').toLowerCase();
                         if (msg.includes('unauthorized') || msg.includes('sesi tamat')) { handleLogout(); return; }
                         setStudentFormError(result.message || (isEditing ? 'Gagal mengemaskini pelajar.' : 'Gagal menambah pelajar.'));
+                        showToast(result.message || (isEditing ? 'Gagal mengemaskini pelajar.' : 'Gagal menambah pelajar.'), 'error');
                     }
                 } catch (err) {
                     setStudentFormError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setSavingStudent(false);
                 }
@@ -1445,12 +1499,13 @@
                     });
                     const result = await response.json();
                     if (result.result === 'success') {
+                        showToast('Pelajar berjaya dipadam.');
                         fetchData();
                     } else {
-                        alert(result.message || 'Gagal memadam pelajar.');
+                        showToast(result.message || 'Gagal memadam pelajar.', 'error');
                     }
                 } catch (err) {
-                    alert('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setDeletingStudentIC(null);
                 }
@@ -1575,14 +1630,17 @@
                         setBulkResult(result);
                         setBulkRows([]);
                         setBulkFileName('');
+                        showToast(`${validRows.length} pelajar berjaya dimuat naik.`);
                         fetchData();
                     } else {
                         const msg = (result.message || '').toLowerCase();
                         if (msg.includes('unauthorized') || msg.includes('sesi tamat')) { handleLogout(); return; }
                         setBulkError(result.message || 'Gagal muat naik.');
+                        showToast(result.message || 'Gagal muat naik.', 'error');
                     }
                 } catch (err) {
                     setBulkError('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     setBulkUploading(false);
                 }
@@ -1625,11 +1683,11 @@
                     if (result.result !== 'success') {
                         throw new Error(result.message || "Gagal kemas kini di server");
                     }
-                    console.log("Status berjaya dikemaskini");
+                    showToast(newStatus === 'VERIFIED' ? 'Bayaran disahkan.' : (newStatus === 'REJECTED' ? 'Bayaran ditolak.' : 'Status dikemaskini.'));
                 } catch (err) {
                     console.error("Kemas kini gagal:", err);
-                    alert("Gagal mengemaskini status: " + err.message);
-                    fetchData(); 
+                    showToast("Gagal mengemaskini status: " + err.message, 'error');
+                    fetchData();
                 } finally {
                     setUpdatingStatus(null);
                 }
@@ -2002,6 +2060,22 @@
 
             return (
                 <div className="flex min-h-screen">
+                    {/* TOAST — popup "Berjaya"/ralat kat penjuru atas-kanan, auto-hilang.
+                        Rujuk showToast() untuk cara panggil dari mana-mana action. */}
+                    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 items-end pointer-events-none">
+                        {toasts.map(t => (
+                            <div
+                                key={t.id}
+                                className={`pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold max-w-xs fade-in ${
+                                    t.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
+                                }`}
+                            >
+                                <Icon name={t.type === 'error' ? 'alert-circle' : 'check-circle-2'} size={18} />
+                                <span>{t.message}</span>
+                            </div>
+                        ))}
+                    </div>
+
                     {/* SIDEBAR */}
                     {/* BACKDROP — mobile sahaja, klik luar drawer untuk tutup */}
                     {mobileNavOpen && (
