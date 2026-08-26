@@ -500,6 +500,30 @@
         </div>
     </div>
 
+    <!-- TOAST — popup "Berjaya"/ralat kat penjuru atas-kanan, auto-hilang.
+         Rujuk showToast() untuk cara panggil dari mana-mana action. -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 items-end pointer-events-none"></div>
+
+    <!-- MODAL: Lihat Resit Rasmi/Bukti Bayaran DALAM APP (bukan buka tab
+         baharu) — sama konsep macam modal Lihat Resit dalam adminpasti,
+         guna iframe preview Drive terus. Rujuk openReceiptModal(). -->
+    <div id="receiptModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between p-4 border-b border-slate-100">
+                <h3 id="receiptModalTitle" class="font-bold text-slate-800">Resit Rasmi</h3>
+                <button id="closeReceiptModalBtn" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="flex-1 bg-slate-50 flex items-center justify-center p-2">
+                <iframe id="receiptModalFrame" src="" class="w-full h-[70vh] rounded-lg border-0" title="Resit"></iframe>
+            </div>
+            <div class="p-3 border-t border-slate-100 text-center">
+                <a id="receiptModalOpenTab" href="#" target="_blank" class="text-xs text-sky-600 hover:underline">Buka dalam tab baharu</a>
+            </div>
+        </div>
+    </div>
+
     <!-- FOOTER -->
     <div class="mt-12 text-center text-slate-400 text-xs">
         <p id="footerText">© 2026 Sistem Pengurusan PASTI</p>
@@ -1063,7 +1087,7 @@
                 payBalanceBtn.classList.add('hidden');
                 if (receiptUrl) {
                     viewReceiptBtn.classList.remove('hidden');
-                    viewReceiptBtn.onclick = () => window.open(receiptUrl, '_blank');
+                    viewReceiptBtn.onclick = () => openReceiptModal(receiptUrl, 'Resit Rasmi');
                 } else {
                     viewReceiptBtn.classList.add('hidden');
                 }
@@ -1100,6 +1124,59 @@
             detailModal.classList.add('hidden');
         }
 
+        // --- TOAST ("Berjaya"/ralat) — dipanggil di hujung setiap action
+        // upload/simpan (rujuk hantar bukti bayaran, kemaskini gambar/no
+        // telefon/alamat di bawah) supaya parent nampak konfirmasi jelas,
+        // bukan sekadar UI senyap berubah tanpa mesej.
+        const toastContainer = document.getElementById('toastContainer');
+        function showToast(message, type) {
+            const el = document.createElement('div');
+            el.className = 'pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold max-w-xs animate-fade-in ' +
+                (type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white');
+            const iconName = type === 'error' ? 'alert-circle' : 'check-circle-2';
+            el.innerHTML = `<i data-lucide="${iconName}" class="w-[18px] h-[18px] flex-shrink-0"></i><span></span>`;
+            el.querySelector('span').textContent = message; // textContent — elak XSS, message boleh datang dari mesej ralat server
+            toastContainer.appendChild(el);
+            lucide.createIcons();
+            setTimeout(() => { el.remove(); }, 3500);
+        }
+
+        // --- MODAL: Lihat Resit/Bukti Bayaran DALAM APP (bukan buka tab
+        // baharu) — Drive "view" link ditukar ke embeddable "preview" link
+        // (endpoint preview Drive sendiri kendali PDF/imej secara generik,
+        // tak perlu teka jenis fail di client) — sama teknik macam modal
+        // Lihat Resit dalam dashboard admin.
+        const receiptModal = document.getElementById('receiptModal');
+        const receiptModalFrame = document.getElementById('receiptModalFrame');
+        const receiptModalTitle = document.getElementById('receiptModalTitle');
+        const receiptModalOpenTab = document.getElementById('receiptModalOpenTab');
+        const closeReceiptModalBtn = document.getElementById('closeReceiptModalBtn');
+
+        function getFileEmbedUrl(url) {
+            if (!url) return '';
+            const match = url.match(/(?:\/d\/|id=)([-\w]+)/);
+            if (match && match[1]) return `https://drive.google.com/file/d/${match[1]}/preview`;
+            return url;
+        }
+
+        function openReceiptModal(url, title) {
+            if (!url) return;
+            receiptModalTitle.innerText = title || 'Resit Rasmi';
+            receiptModalFrame.src = getFileEmbedUrl(url);
+            receiptModalOpenTab.href = url;
+            receiptModal.classList.remove('hidden');
+        }
+
+        function closeReceiptModal() {
+            receiptModal.classList.add('hidden');
+            receiptModalFrame.src = ''; // stop loading/preview lepas ditutup
+        }
+
+        closeReceiptModalBtn.addEventListener('click', closeReceiptModal);
+        receiptModal.addEventListener('click', (e) => {
+            if (e.target === receiptModal) closeReceiptModal();
+        });
+
         closeModalBtn.addEventListener('click', closeModal);
         closeModalBottomBtn.addEventListener('click', closeModal);
 
@@ -1127,7 +1204,7 @@
                 const jumlah = parseCurrency(l['JUMLAH BAYARAN'] || l['Jumlah Bayaran']);
                 const resitUrl = l['Resit'] || '';
                 const resitCell = resitUrl
-                    ? `<a href="${resitUrl}" target="_blank" class="text-emerald-600 hover:text-emerald-800"><i data-lucide="file-check" class="w-4 h-4 inline"></i></a>`
+                    ? `<button type="button" onclick="openReceiptModal('${resitUrl}', 'Resit Rasmi')" class="text-emerald-600 hover:text-emerald-800"><i data-lucide="file-check" class="w-4 h-4 inline"></i></button>`
                     : '<span class="text-slate-300">-</span>';
                 return `<tr>
                     <td class="p-2">${jenis}</td>
@@ -1186,7 +1263,7 @@
                 if (status === 'VERIFIED') {
                     statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 whitespace-nowrap">SUDAH DIBAYAR</span>';
                     actionHtml = resitUrl
-                        ? `<a href="${resitUrl}" target="_blank" class="text-emerald-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-2"><i data-lucide="file-check" class="w-3.5 h-3.5"></i> Lihat Resit</a>`
+                        ? `<button type="button" onclick="openReceiptModal('${resitUrl}', 'Resit Rasmi')" class="text-emerald-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-2"><i data-lucide="file-check" class="w-3.5 h-3.5"></i> Lihat Resit</button>`
                         : '';
                 } else if (status === 'PENDING') {
                     statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 text-yellow-700 whitespace-nowrap">MENUNGGU PENGESAHAN</span>';
@@ -1291,8 +1368,9 @@
 
                 fee['Status'] = 'PENDING';
                 delete adhocFileMap[fee['Timestamp']];
+                showToast('Bukti bayaran berjaya dihantar. Menunggu pengesahan admin.');
             } catch (err) {
-                alert('Gagal menghantar bukti bayaran: ' + err.message);
+                showToast('Gagal menghantar bukti bayaran: ' + err.message, 'error');
             } finally {
                 delete adhocSubmitting[fee['Timestamp']];
                 renderAdhocFees();
@@ -1328,11 +1406,12 @@
                     if (result.result === 'success') {
                         searchResult['Gambar Pelajar'] = result.photoUrl || searchResult['Gambar Pelajar'];
                         renderProfile();
+                        showToast('Gambar berjaya dikemaskini.');
                     } else {
-                        alert(result.message || 'Gagal kemaskini gambar.');
+                        showToast(result.message || 'Gagal kemaskini gambar.', 'error');
                     }
                 } catch (err) {
-                    alert('Ralat menyambung ke server.');
+                    showToast('Ralat menyambung ke server.', 'error');
                 } finally {
                     editPhotoBtn.disabled = false;
                     editPhotoInput.value = '';
@@ -1375,11 +1454,12 @@
                     renderProfile();
                     phoneEditBlock.classList.add('hidden');
                     warisDisplayBlock.classList.remove('hidden');
+                    showToast('No. telefon berjaya dikemaskini.');
                 } else {
-                    alert(result.message || 'Gagal kemaskini no. telefon.');
+                    showToast(result.message || 'Gagal kemaskini no. telefon.', 'error');
                 }
             } catch (err) {
-                alert('Ralat menyambung ke server.');
+                showToast('Ralat menyambung ke server.', 'error');
             } finally {
                 savePhoneBtn.disabled = false;
                 savePhoneBtn.innerText = 'Simpan';
@@ -1412,11 +1492,12 @@
                     renderProfile();
                     alamatEditBlock.classList.add('hidden');
                     studentAddress.classList.remove('hidden');
+                    showToast('Alamat berjaya dikemaskini.');
                 } else {
-                    alert(result.message || 'Gagal kemaskini alamat.');
+                    showToast(result.message || 'Gagal kemaskini alamat.', 'error');
                 }
             } catch (err) {
-                alert('Ralat menyambung ke server.');
+                showToast('Ralat menyambung ke server.', 'error');
             } finally {
                 saveAlamatBtn.disabled = false;
                 saveAlamatBtn.innerText = 'Simpan';
